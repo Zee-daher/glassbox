@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GlassBox AI — Live Demo</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "Segoe UI", sans-serif; margin: 0; padding: 24px; background: #0f1115; color: #e6e8ec; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: #9aa0aa; font-size: 13px; margin: 0 0 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 300px; }
+  .card { background: #171a21; border: 1px solid #262b35; border-radius: 12px; padding: 16px; }
+  .arena { position: relative; height: 280px; background: #11141a; border: 1px solid #262b35; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .ai { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; transition: all .3s ease; transform: translate(-50%, -50%); box-shadow: 0 0 0 3px rgba(255,255,255,.18), 0 0 26px rgba(255,255,255,.08); z-index: 2; }
+  .ai-tag { position: absolute; left: 50%; top: calc(50% - 54px); transform: translateX(-50%); font-size: 11px; letter-spacing: 1px; color: #e6e8ec; background: #11141a; border: 1px solid #2c3340; padding: 2px 9px; border-radius: 12px; z-index: 2; white-space: nowrap; }
+  .unit { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; transform: translate(-50%, -50%); }
+  .escape { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 8px; height: 64px; border-radius: 4px 0 0 4px; }
+  .exit-tag { position: absolute; right: 14px; top: calc(50% - 46px); font-size: 10px; letter-spacing: 1px; color: #6b7280; }
+  .legend { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: #9aa0aa; display: flex; gap: 16px; }
+  .legend .sq { display:inline-block; width:11px; height:11px; border-radius:3px; background:#ef4444; margin-right:5px; vertical-align:-1px; box-shadow:0 0 0 2px rgba(255,255,255,.18); }
+  .legend .dt { display:inline-block; width:11px; height:11px; border-radius:50%; background:#3b82f6; margin-right:5px; vertical-align:-1px; }
+  .ctrl { margin: 14px 0; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 13px; color: #c4c9d2; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; }
+  .toggle { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #c4c9d2; }
+  .decision { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
+  .rule { color: #9aa0aa; font-size: 13px; margin-bottom: 16px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin: 16px 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: #1e2530; border: 1px solid #2c3340; color: #a5b4c8; font-size: 12px; padding: 3px 9px; border-radius: 20px; font-family: ui-monospace, monospace; }
+  .trace { list-style: none; padding: 0; margin: 0; }
+  .trace li { font-family: ui-monospace, monospace; font-size: 12.5px; color: #c4c9d2; padding: 5px 0; border-bottom: 1px solid #1e2229; }
+  .trace li:last-child { border-bottom: none; color: #fff; }
+</style>
+</head>
+<body>
+  <h1>GlassBox AI — Live Demo</h1>
+  <p class="sub">Drag the controls to change the situation. The knowledge-based engine re-decides and explains itself in real time.</p>
+  <div class="layout">
+    <div class="col"><div class="card">
+      <div class="arena" id="arena">
+        <div class="ai-tag">ENEMY (the AI)</div>
+        <div class="ai" id="ai">...</div>
+        <div class="escape" id="escape"></div>
+        <div class="exit-tag">EXIT</div>
+        <div class="legend"><span><span class="sq"></span>AI enemy (decides)</span><span><span class="dt"></span>player units</span></div>
+      </div>
+      <div class="ctrl"><label>Enemy HP <span id="hp-val">15</span></label><input type="range" id="hp" min="0" max="100" value="15" /></div>
+      <div class="ctrl"><label>Player units nearby <span id="near-val">3</span></label><input type="range" id="near" min="0" max="5" value="3" /></div>
+      <div class="ctrl"><label>Player distance <span id="dist-val">6</span></label><input type="range" id="dist" min="0" max="30" value="6" /></div>
+      <div class="ctrl"><label class="toggle"><input type="checkbox" id="escapeChk" /> Escape route open</label></div>
+    </div></div>
+    <div class="col"><div class="card">
+      <div class="label">Decision</div>
+      <div class="decision" id="decision">—</div>
+      <div class="rule" id="firedRule"></div>
+      <div class="label">Reasoning chain</div>
+      <ul class="trace" id="trace"></ul>
+      <div class="label">Derived facts</div>
+      <div class="chips" id="derived"></div>
+    </div></div>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  const els = { hp:$('hp'), near:$('near'), dist:$('dist'), escapeChk:$('escapeChk'),
+    hpVal:$('hp-val'), nearVal:$('near-val'), distVal:$('dist-val'),
+    arena:$('arena'), ai:$('ai'), escape:$('escape'), decision:$('decision'),
+    firedRule:$('firedRule'), trace:$('trace'), derived:$('derived') };
+  const COLORS = { RETREAT:'#f59e0b', CALL_BACKUP:'#ef4444', TAKE_COVER:'#8b5cf6', ATTACK:'#22c55e', HOLD:'#64748b' };
+
+  function renderUnits(n, distance) {
+    els.arena.querySelectorAll('.unit').forEach(u => u.remove());
+    for (let i = 0; i < n; i++) {
+      const angle = (i / Math.max(n,1)) * Math.PI * 2;
+      const radius = 18 + distance;
+      const u = document.createElement('div');
+      u.className = 'unit';
+      u.style.left = (50 + Math.cos(angle) * radius * 0.8) + '%';
+      u.style.top  = (50 + Math.sin(angle) * radius) + '%';
+      els.arena.appendChild(u);
+    }
+  }
+
+  async function update() {
+    const facts = { enemy_hp:+els.hp.value, enemies_nearby:+els.near.value,
+      player_distance:+els.dist.value, escape_route_open:els.escapeChk.checked };
+    els.hpVal.textContent = facts.enemy_hp;
+    els.nearVal.textContent = facts.enemies_nearby;
+    els.distVal.textContent = facts.player_distance;
+    renderUnits(facts.enemies_nearby, facts.player_distance);
+    els.escape.style.background = facts.escape_route_open ? '#22c55e' : '#3a3f4a';
+    try {
+      const res = await fetch('/decide', { method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(facts) });
+      const data = await res.json();
+      const color = COLORS[data.decision] || '#64748b';
+      els.ai.style.background = color; els.ai.style.color = '#0f1115'; els.ai.textContent = data.decision;
+      els.decision.textContent = data.decision; els.decision.style.color = color;
+      els.firedRule.textContent = data.fired_rule ? 'fired rule: ' + data.fired_rule : 'no rule fired';
+      els.trace.innerHTML = '';
+      (data.trace || []).forEach(s => { const li = document.createElement('li'); li.textContent = s; els.trace.appendChild(li); });
+      const df = data.derived_facts || {};
+      els.derived.innerHTML = Object.keys(df).length
+        ? Object.keys(df).map(k => `<span class="chip">${k} = ${df[k]}</span>`).join('')
+        : '<span class="chip">none</span>';
+    } catch (e) {
+      els.decision.textContent = 'connection error';
+      els.firedRule.textContent = 'is the server running?';
+    }
+  }
+  [els.hp, els.near, els.dist].forEach(el => el.addEventListener('input', update));
+  els.escapeChk.addEventListener('change', update);
+  update();
+</script>
+</body>
+</html>
